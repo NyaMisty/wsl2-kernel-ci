@@ -113,10 +113,12 @@ jobs:
       ###
       ##########################################################
 
-      - name: Prepare WSL2 Build Dependencies
+      - name: Prepare WSL2 Build Environment
         run: |
           sudo apt install build-essential flex bison dwarves libssl-dev libelf-dev
+          mkdir -p build_workdir
       - name: Download WSL2 Kernel Source
+        working-directory: build_workdir
         run: |
           gh release download -R microsoft/WSL2-Linux-Kernel "${{ needs.check.outputs.tagName }}" -A tar.gz
           tar zxf WSL2-Linux-Kernel-${{ needs.check.outputs.tagName }}.tar.gz
@@ -126,6 +128,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         
       - name: Preprocess Kernel Sources
+        working-directory: build_workdir
         run: |
           pushd kernelsource;
             
@@ -133,7 +136,7 @@ jobs:
             touch .scmversion;
             cp Microsoft/config-wsl .config
             
-            make oldconfig && make prepare
+            yes "" | (make oldconfig && make prepare)
             export KREL=$(make kernelrelease)
             export KVER=$(make kernelversion)
             echo "Got Kernel Version Info:"
@@ -149,9 +152,12 @@ jobs:
           echo "KERNEL_DIR=$sourcedir" >> $GITHUB_ENV
       
       - name: Patch WSL2 Kernel Config
+        working-directory: build_workdir
         run: |
           cd ${{ env.KERNEL_DIR }}
-
+          cp .config .config_original
+          python3 ${{ github.workspace }}/config_merge/merge_config.py .config_original ${{ github.workspace }}/config_merge/ubuntu_config ${{ github.workspace }}/config_merge/ubuntu_config_picked.diff .config
+          yes "" | (make oldconfig && make prepare)
 
       ##########################################################
       ###
@@ -162,11 +168,11 @@ jobs:
       # Enable tmate debugging of manually-triggered workflows if the input option was provided
       - name: Setup tmate session
         uses: mxschmitt/action-tmate@v3
-        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.debug_enabled && always() }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.debug_enabled && always()) || failure() }}
         env:
           SECRETS_CONTEXT: ${{ toJson(secrets) }}
+        timeout-minutes: ${{ github.event_name == 'schedule' && 40 || 360 }}
       
-
       ##########################################################
       ###
       ### XXX: Main building steps here
@@ -174,12 +180,15 @@ jobs:
       ##########################################################
             
       - name: Compile Kernel Debs
+        working-directory: build_workdir
         run: |
           cd ${{ env.KERNEL_DIR }}
+          touch .scmversion;
           sed -i 's/version=\$KERNELRELEASE/version=\$(echo \$KERNELRELEASE | tr "[:upper:]" "[:lower:]")/' scripts/package/mkdebian
-          make deb-pkg -j$BUILD_THREAD KDEB_PKGVERSION=$(make kernelversion)-1 KDEB_SOURCENAME=$(make kernelrelease | tr "[:upper:]" "[:lower:]")
+          yes "" | make deb-pkg -j$BUILD_THREAD KDEB_PKGVERSION=$(make kernelversion)-1 KDEB_SOURCENAME=$(make kernelrelease | tr "[:upper:]" "[:lower:]")
       
       - name: Arrange Artifacts
+        working-directory: build_workdir
         run: |
           mv ${{ env.KERNEL_DIR }}/arch/x86/boot/bzImage bzImage-${{ needs.check.outputs.tagName }}
           rm -rf ${{ env.KERNEL_DIR }}
