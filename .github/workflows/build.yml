@@ -1,0 +1,218 @@
+name: Build WSL2 Dev Release Kernel
+
+on:
+  push:
+  workflow_dispatch:
+    inputs:
+      debug_enabled:
+        description: 'Run the build with tmate debugging enabled (https://github.com/marketplace/actions/debugging-with-tmate)'
+        required: false
+        default: false
+  repository_dispatch:
+  schedule:
+   - cron: "0 */4 * * *" # min hour day week year
+
+concurrency: builder-${{ github.ref }}
+
+env:
+  BUILD_THREAD: 3
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+          submodules: recursive
+      - name: Get Previous tag
+        id: previoustag # output: tag
+        run: |
+          if [[ ! -z $(gh release list) ]]; then
+            lastTag=$(gh release view --json tagName --jq .tagName)
+            echo "::set-output name=tag::${lastTag}"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Sync microsoft/WSL2-Linux-Kernel Release Tag
+        id: gettag
+        run: |
+          INFO=$(gh release view -R microsoft/WSL2-Linux-Kernel --json name,tagName,publishedAt)
+          name=$(echo $INFO | jq -r .name)
+          tagName=$(echo $INFO | jq -r .tagName)
+          publishedAt=$(echo $INFO | jq -r .publishedAt)
+          echo "::set-output name=name::${name}"
+          echo "::set-output name=tagName::${tagName}"
+          echo "::set-output name=publishedAt::${publishedAt}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Check Version Same 
+        id: checktag
+        run: |
+          echo "Upstream Tag: ${{ steps.gettag.outputs.tagName }}"
+          echo "Cur Tag: ${{ steps.previoustag.outputs.tag }}"
+          if [[ "${{ steps.gettag.outputs.tagName }}" != "${{ steps.previoustag.outputs.tag }}" ]]; then
+            echo "Have new tag!"
+            echo "::set-output name=haveNewTag::true"
+          else
+            echo "No new tag~"
+            echo "::set-output name=haveNewTag::false"
+          fi
+    outputs:
+      haveNewTag: ${{ steps.checktag.outputs.haveNewTag }}
+      name: ${{ steps.gettag.outputs.name }}
+      tagName: ${{ steps.gettag.outputs.tagName }}
+      publishedAt: ${{ steps.gettag.outputs.publishedAt }}
+          
+  build:
+    #### Build Matrix
+    # strategy:
+    #   matrix:
+    #     builder: [ghcr.io/nyamisty/altserver_builder_alpine_armv7, ghcr.io/nyamisty/altserver_builder_alpine_aarch64, ghcr.io/nyamisty/altserver_builder_alpine_amd64, ghcr.io/nyamisty/altserver_builder_alpine_i386]
+    needs: check
+    if: ${{ needs.check.outputs.haveNewTag == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      ##########################################################
+      ###
+      ### XXX: Pre-init steps here
+      ###
+      ##########################################################
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+          submodules: recursive
+      - name: Generate timestamp
+        id: timestamp # output: value
+        run: |
+          TIMESTAMP="$(date +"%Y%m%d")"
+          echo "Timestamp: ${TIMESTAMP}"
+          echo "::set-output name=value::${TIMESTAMP}"
+      - name: Get tag
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        id: tag # output: tag
+        uses: dawidd6/action-get-tag@v1
+      - name: Get Previous tag
+        id: previoustag # output: tag
+        run: |
+          if [[ ! -z $(gh release list) ]]; then
+            lastTag=$(gh release view --json tagName --jq .tagName)
+            echo "::set-output name=tag::${lastTag}"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      ### XXX: Keep alive cron-type workflows
+      - uses: gautamkrishnar/keepalive-workflow@master
+
+      ##########################################################
+      ###
+      ### XXX: Env-setup steps here
+      ###
+      ##########################################################
+
+      - name: Prepare WSL2 Build Dependencies
+        run: |
+          sudo apt install build-essential flex bison dwarves libssl-dev libelf-dev
+      - name: Download WSL2 Kernel Source
+        run: |
+          gh release download -R microsoft/WSL2-Linux-Kernel "${{ needs.check.outputs.tagName }}" -A tar.gz
+          tar zxf WSL2-Linux-Kernel-${{ needs.check.outputs.tagName }}.tar.gz
+          rm WSL2-Linux-Kernel-${{ needs.check.outputs.tagName }}.tar.gz
+          mv WSL2-Linux-Kernel-${{ needs.check.outputs.tagName }} kernelsource
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+      - name: Preprocess Kernel Sources
+        run: |
+          pushd kernelsource;
+            
+            rm -f README-Microsoft.WSL2
+            touch .scmversion;
+            cp Microsoft/config-wsl .config
+            
+            make oldconfig && make prepare
+            export KREL=$(make kernelrelease)
+            export KVER=$(make kernelversion)
+            echo "Got Kernel Version Info:"
+            echo "    kernelrelease: $KREL"
+            echo "    kernelversion: $KVER"
+          popd
+
+          sourcedir=$(echo $KREL-$KVER | tr "[:upper:]" "[:lower:]")
+          
+          echo "Renaming Kernel Source dir to: $sourcedir"
+          mv kernelsource $sourcedir
+
+          echo "KERNEL_DIR=$sourcedir" >> $GITHUB_ENV
+      
+      - name: Patch WSL2 Kernel Config
+        run: |
+          cd ${{ env.KERNEL_DIR }}
+
+
+      ##########################################################
+      ###
+      ### XXX: Pre-build steps here (checking, debugging)
+      ###
+      ##########################################################
+        
+      # Enable tmate debugging of manually-triggered workflows if the input option was provided
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.debug_enabled && always() }}
+        env:
+          SECRETS_CONTEXT: ${{ toJson(secrets) }}
+      
+
+      ##########################################################
+      ###
+      ### XXX: Main building steps here
+      ###
+      ##########################################################
+            
+      - name: Compile Kernel Debs
+        run: |
+          cd ${{ env.KERNEL_DIR }}
+          sed -i 's/version=\$KERNELRELEASE/version=\$(echo \$KERNELRELEASE | tr "[:upper:]" "[:lower:]")/' scripts/package/mkdebian
+          make deb-pkg -j$BUILD_THREAD KDEB_PKGVERSION=$(make kernelversion)-1 KDEB_SOURCENAME=$(make kernelrelease | tr "[:upper:]" "[:lower:]")
+      
+      - name: Arrange Artifacts
+        run: |
+          mv ${{ env.KERNEL_DIR }}/arch/x86/boot/bzImage bzImage-${{ needs.check.outputs.tagName }}
+          rm -rf ${{ env.KERNEL_DIR }}
+
+          mkdir -p /tmp/build_output
+          mv * /tmp/build_output
+
+      ##########################################################
+      ###
+      ### XXX: Artifact Upload
+      ###
+      ##########################################################
+      
+      # XXX: Select one debug artifact uploading
+      # Upload action artifact as-is
+      - name: Upload to GitHub Actions artifact
+        uses: NyaMisty/upload-artifact-as-is@master
+        with:
+          path: /tmp/build_output/*
+
+      - name: Create New Release and Upload
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "/tmp/build_output/*"
+          name: "${{ format('Nightly Kernel: {0}', needs.check.outputs.tagName) }}"
+          tag: ${{ needs.check.outputs.tagName }}
+          commit: ${{ github.sha }}
+          #prerelease: true
+          allowUpdates: true
+
+          # XXX: edit this to false & true if you want to preserve original artifact
+          removeArtifacts: true
+          replacesArtifacts: false
+          artifactErrorsFailBuild: true
+          token: ${{ secrets.GITHUB_TOKEN }}
