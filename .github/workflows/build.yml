@@ -12,7 +12,7 @@ on:
   schedule:
    - cron: "0 */4 * * *" # min hour day week year
 
-concurrency: builder-${{ github.event_name }}-${{ github.ref }}
+concurrency: builder-${{ github.event_name }}-${{ github.sha }}
 
 env:
   BUILD_THREAD: 3
@@ -115,11 +115,35 @@ jobs:
 
       - name: Prepare WSL2 Build Environment
         run: |
-          sudo apt install build-essential flex bison dwarves libssl-dev libelf-dev
-          mkdir -p build_workdir
+          sudo apt install -y build-essential flex bison libssl-dev libelf-dev
+
+          sudo apt install -y gcc-11 g++-11
+          sudo update-alternatives --remove-all gcc || true 
+          sudo update-alternatives --remove-all g++ || true
+
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 10
+          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 10
+
+          sudo update-alternatives --install /usr/bin/cc cc /usr/bin/gcc 30
+          sudo update-alternatives --set cc /usr/bin/gcc
+
+          sudo update-alternatives --install /usr/bin/c++ c++ /usr/bin/g++ 30
+          sudo update-alternatives --set c++ /usr/bin/g++
+
+          sudo update-alternatives --set gcc "/usr/bin/gcc-11"
+          sudo update-alternatives --set g++ "/usr/bin/g++-11"
+
+          # install latest dwarves
+          sudo apt install -y libdw-dev
+          git clone -b v1.22 https://github.com/acmel/dwarves
+          cd dwarves; mkdir build; cd build
+          cmake -D__LIB=lib -DCMAKE_INSTALL_PREFIX=/usr ..
+          sudo make install
+          cd ..
+
       - name: Download WSL2 Kernel Source
-        working-directory: build_workdir
         run: |
+          mkdir -p build_workdir; cd build_workdir
           gh release download -R microsoft/WSL2-Linux-Kernel "${{ needs.check.outputs.tagName }}" -A tar.gz
           tar zxf WSL2-Linux-Kernel-${{ needs.check.outputs.tagName }}.tar.gz
           rm WSL2-Linux-Kernel-${{ needs.check.outputs.tagName }}.tar.gz
@@ -150,14 +174,35 @@ jobs:
           mv kernelsource $sourcedir
 
           echo "KERNEL_DIR=$sourcedir" >> $GITHUB_ENV
-      
-      - name: Patch WSL2 Kernel Config
+        
+      - name: Setup Kernel Config Helpers
         working-directory: build_workdir
         run: |
           cd ${{ env.KERNEL_DIR }}
-          cp .config .config_original
-          python3 ${{ github.workspace }}/config_merge/merge_config.py .config_original ${{ github.workspace }}/config_merge/ubuntu_config ${{ github.workspace }}/config_merge/ubuntu_config_picked.diff .config
+          pip3 install kconfiglib
+          wget -qO- https://raw.githubusercontent.com/ulfalizer/Kconfiglib/master/makefile.patch | patch -p1
+      
+      - name: Process Kernel Config
+        working-directory: build_workdir
+        run: |
+          cd ${{ env.KERNEL_DIR }}
+          cat ${{ github.workspace }}/config_filter/blacklist_sections | make scriptconfig PYTHONCMD=python3 SCRIPT=${{ github.workspace }}/config_filter/parse_kconfig.py SCRIPT_ARG="get_blacklist_sym" > blacklist_syms
+          python3 ${{ github.workspace }}/config_filter/filter_config.py blacklist_syms ${{ github.workspace }}/config_filter/ubuntu_config ubuntu_config_filtered
+          python3 ${{ github.workspace }}/config_filter/merge_config.py Microsoft/config-wsl ubuntu_config_filtered .config
+        
+      - name: Reconfigure Kernel Config
+        working-directory: build_workdir
+        run: |
+          cd ${{ env.KERNEL_DIR }}
           yes "" | (make oldconfig && make prepare)
+      
+      # - name: Patch WSL2 Kernel Config
+      #   working-directory: build_workdir
+      #   run: |
+      #     cd ${{ env.KERNEL_DIR }}
+      #     cp .config .config_original
+      #     python3 ${{ github.workspace }}/config_merge/merge_config.py .config_original ${{ github.workspace }}/config_merge/ubuntu_config ${{ github.workspace }}/config_merge/ubuntu_config_picked.diff .config
+      #     yes "" | (make oldconfig && make prepare)
 
       ##########################################################
       ###
@@ -168,7 +213,7 @@ jobs:
       # Enable tmate debugging of manually-triggered workflows if the input option was provided
       - name: Setup tmate session
         uses: mxschmitt/action-tmate@v3
-        if: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.debug_enabled && always()) || failure() }}
+        if: ${{ always() && ( (github.event_name == 'workflow_dispatch' && github.event.inputs.debug_enabled) || failure() ) }}
         env:
           SECRETS_CONTEXT: ${{ toJson(secrets) }}
         timeout-minutes: ${{ github.event_name == 'schedule' && 40 || 360 }}
@@ -184,8 +229,9 @@ jobs:
         run: |
           cd ${{ env.KERNEL_DIR }}
           touch .scmversion;
-          sed -i 's/version=\$KERNELRELEASE/version=\$(echo \$KERNELRELEASE | tr "[:upper:]" "[:lower:]")/' scripts/package/mkdebian
-          yes "" | make deb-pkg -j$BUILD_THREAD KDEB_PKGVERSION=$(make kernelversion)-1 KDEB_SOURCENAME=$(make kernelrelease | tr "[:upper:]" "[:lower:]")
+          sed -i 's/-\$version/-\$KDEB_PKGNAMEVER/' scripts/package/mkdebian
+          sed -i 's/dpkg-gencontrol -p\$pname /pname=\$(echo "\$pname"| tr "[:upper:]" "[:lower:]"); dpkg-gencontrol -p\$pname /' scripts/package/builddeb
+          yes "" |make -j$BUILD_THREAD deb-pkg KDEB_PKGVERSION=$(make kernelversion)-1 KDEB_PKGNAMEVER=$(make kernelrelease | tr "[:upper:]" "[:lower:]") KDEB_SOURCENAME=$(make kernelrelease | tr "[:upper:]" "[:lower:]")
       
       - name: Arrange Artifacts
         working-directory: build_workdir
@@ -196,6 +242,14 @@ jobs:
           mkdir -p /tmp/build_output
           mv * /tmp/build_output
 
+      # Enable tmate debugging of manually-triggered workflows if the input option was provided
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
+        if: ${{ always() && ( (github.event_name == 'workflow_dispatch' && github.event.inputs.debug_enabled) || failure() ) }}
+        env:
+          SECRETS_CONTEXT: ${{ toJson(secrets) }}
+        timeout-minutes: ${{ github.event_name == 'schedule' && 40 || 360 }}
+      
       ##########################################################
       ###
       ### XXX: Artifact Upload
