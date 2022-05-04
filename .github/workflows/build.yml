@@ -2,6 +2,8 @@ name: Build WSL2 Dev Release Kernel
 
 on:
   push:
+    branches:
+      - master
   workflow_dispatch:
     inputs:
       debug_enabled:
