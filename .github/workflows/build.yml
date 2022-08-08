@@ -181,7 +181,8 @@ jobs:
         working-directory: build_workdir
         run: |
           cd ${{ env.KERNEL_DIR }}
-          pip3 install kconfiglib
+          #pip3 install kconfiglib # Kconfiglib is now dead, using our fork!
+          pip3 install git+https://github.com/NyaMisty/Kconfiglib-ng
           wget -qO- https://raw.githubusercontent.com/ulfalizer/Kconfiglib/master/makefile.patch | patch -p1
       
       - name: Process Kernel Config
