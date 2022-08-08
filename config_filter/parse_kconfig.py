@@ -114,21 +114,28 @@ def getBlacklistSymbols(nodes, blackDict):
     for c in nodes:
         nodeNamesMap[getNodeName(c)] = c
     for k in blackDict:
-        curnodes = []
+        curBlackNodes = []
+        def doFilter(name):
+            if name in nodeNamesMap:
+                curBlackNodes.append(nodeNamesMap[name])
+            else:
+                print("Symbol %s in blacklist, but not found" % name)
         if k.startswith('Menu: '):
-            curnodes = [nodeNamesMap[k]]
+            # filter whole node
+            doFilter(k)
         elif k.startswith('['):
             nodenames = k[1:-1].split(' ')
             for c in nodenames:
-                curnodes.append(nodeNamesMap[c])
+                # filter each blacklist name
+                doFilter(c)
         
         if not blackDict[k]:
-            ret += list(filter(lambda x: x, map(getNodeSym, curnodes)))
-            if len(curnodes) == 1:
-                ret += getAllChildSymbol(curnodes[0])
+            ret += list(filter(lambda x: x, map(getNodeSym, curBlackNodes)))
+            if len(curBlackNodes) == 1:
+                ret += getAllChildSymbol(curBlackNodes[0])
         else:
-            assert len(curnodes) == 1
-            ret += getBlacklistSymbols(nodes[curnodes[0]], blackDict[k])
+            assert len(curBlackNodes) == 1
+            ret += getBlacklistSymbols(nodes[curBlackNodes[0]], blackDict[k])
     return ret
 
 
