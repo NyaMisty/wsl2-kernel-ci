@@ -12,6 +12,7 @@ def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
 
 def prepareNode(nodedict, node):
+    # convert node linklist to node dict
     subnode = node.list
     while subnode:
         nodedict[subnode] = OrderedDict({})
@@ -19,6 +20,7 @@ def prepareNode(nodedict, node):
         subnode = subnode.next
 
 def getNodeName(node):
+    # node name as an identifier for debugging & blacklisting
     if node.is_menuconfig:
         return "Menu: " + node.prompt[0]
     else:
@@ -28,6 +30,7 @@ def getNodeName(node):
             return node.item.name
 
 def printNodeDict(index, nodedict):
+    # for debug
     leafnodes = []
     for c in nodedict:
         s = None
@@ -54,11 +57,15 @@ def printNodeDict(index, nodedict):
 
 
 def parseBlacklist(blacklist):
+    # parse manual-selected blacklist symbol, having same structure as `nodedict`
+    # blacklist_sections is using indent to indicate different level
     blacklist_lines = blacklist.splitlines()
     blacklist_lines = list(filter(lambda l: l.strip() and not l.strip().startswith('#'), blacklist_lines))
     blacklist_dict = {}
     cur_indent_level = 0
     # parents = [blacklist_dict]
+
+    # traverse all lines using a stack
     parents = { 0 : blacklist_dict }
     last_line_group = None
     for _line in blacklist_lines:
@@ -100,6 +107,8 @@ def getAllChildSymbol(_node):
     return symList
 
 def getBlacklistSymbols(nodes, blackDict):
+    # nodes & blackDict should have same structure,
+    # we traverse them side-by-side to filter some config
     ret = []
     nodeNamesMap = {}
     for c in nodes:
