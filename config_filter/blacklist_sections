@@ -12,7 +12,7 @@ Menu: General setup
 # XXX: kernel basic running environment config & processor related, using Microsoft's one
 [64BIT X86_32 X86_64 FORCE_DYNAMIC_FTRACE X86 INSTRUCTION_DECODER OUTPUT_FORMAT LOCKDEP_SUPPORT STACKTRACE_SUPPORT MMU ARCH_MMAP_RND_BITS_MIN ARCH_MMAP_RND_BITS_MAX ARCH_MMAP_RND_COMPAT_BITS_MIN ARCH_MMAP_RND_COMPAT_BITS_MAX SBUS GENERIC_ISA_DMA GENERIC_BUG GENERIC_BUG_RELATIVE_POINTERS ARCH_MAY_HAVE_PC_FDC GENERIC_CALIBRATE_DELAY ARCH_HAS_CPU_RELAX ARCH_HAS_CACHE_LINE_SIZE ARCH_HAS_FILTER_PGPROT HAVE_SETUP_PER_CPU_AREA NEED_PER_CPU_EMBED_FIRST_CHUNK NEED_PER_CPU_PAGE_FIRST_CHUNK ARCH_HIBERNATION_POSSIBLE ARCH_SUSPEND_POSSIBLE ARCH_WANT_GENERAL_HUGETLB ZONE_DMA32 AUDIT_ARCH ARCH_SUPPORTS_DEBUG_PAGEALLOC KASAN_SHADOW_OFFSET HAVE_INTEL_TXT X86_32_SMP X86_64_SMP X86_32_LAZY_GS ARCH_SUPPORTS_UPROBES FIX_EARLYCON_MEM DYNAMIC_PHYSICAL_MASK PGTABLE_LEVELS CC_HAS_SANE_STACKPROTECTOR]
 Menu: Processor type and features
-    Menu: Processor family
+    # Menu: Processor family  # removed; see 'Supported processor vendors'
     # XXX: enabling this will enable XEN, which forces hibernation enabled
     Menu: Linux guest support
     Menu: Supported processor vendors
@@ -24,7 +24,6 @@ Menu: Power management and ACPI options
 
 # XXX: WSL will never use these things
 Menu: Bus options (PCI etc.)
-Menu: Firmware Drivers
 
 # XXX: Disable Kernel Module Signature
 [MODULE_SIG_FORMAT]
@@ -47,7 +46,7 @@ Menu: Networking support
     # XXX: Disabled as WSL will never have Radio/CAN/WiMax devices
     Menu: Amateur Radio support
     Menu: CAN bus subsystem support
-    Menu: WiMAX Wireless Broadband support
+    # Menu: WiMAX Wireless Broadband support  # WiMAX removed from kernel (~5.16)
 
 # XXX: Disabled drivers that WSL will never have a chance to use
 Menu: Device Drivers
@@ -59,12 +58,14 @@ Menu: Device Drivers
         [STANDALONE PREVENT_FIRMWARE_BUILD]
         Menu: Firmware loader
     Menu: Bus devices
+    # XXX: moved from top-level into Device Drivers in newer kernels
+    Menu: Firmware Drivers
     Menu: GNSS receiver support
     Menu: Memory Technology Device (MTD) support
     Menu: Parallel port support
     Menu: NVME Support
     Menu: Misc devices
-    Menu: ATA/ATAPI/MFM/RLL support (DEPRECATED)
+    # Menu: ATA/ATAPI/MFM/RLL (removed in newer kernels)
     Menu: SCSI device support
     HAVE_PATA_PLATFORM
     Menu: Serial ATA and Parallel ATA drivers (libata)
@@ -83,16 +84,13 @@ Menu: Device Drivers
         [HIPPI]
         [QCOM_IPA NET_SB1000 PHYLINK]
         Menu: PHY Device support and infrastructure
-        [MICREL_KS8995MA]
-        Menu: MDIO bus device drivers
+        # MICREL_KS8995MA & MDIO bus drivers menu removed in newer kernels
         Menu: PCS device drivers
         Menu: S/390 network device drivers
         Menu: Wireless LAN
-        Menu: WiMAX Wireless Broadband devices
         Menu: Wan interfaces support
         Menu: IEEE 802.15.4 drivers
         Menu: ISDN support
-    Menu: Open-Channel SSD target support
     Menu: Input device support
     Menu: Character devices
     [RANDOM_TRUST_CPU RANDOM_TRUST_BOOTLOADER]
@@ -118,8 +116,10 @@ Menu: Device Drivers
     Menu: Multifunction device drivers
     Menu: Voltage and Current Regulator Support
     Menu: Remote Controller support
-    [CEC_CORE CEC_NOTIFIER CEC_PIN MEDIA_CEC_RC CEC_PIN_ERROR_INJ]
-    Menu: HDMI CEC drivers
+    [CEC_CORE CEC_NOTIFIER CEC_PIN]
+    # XXX: CEC drivers moved under their own 'CEC support' menu (6.18)
+    Menu: CEC support
+        Menu: HDMI CEC drivers
     Menu: Multimedia support
         Menu: Media drivers
         [MEDIA_HIDE_ANCILLARY_SUBDRV]
@@ -128,11 +128,18 @@ Menu: Device Drivers
     Menu: Sound card support
     [AC97_BUS]
     Menu: MMC/SD/SDIO card support
-    Menu: HID support
+    # XXX: renamed from 'Menu: HID support'; the sub-menus (except USB HID)
+    # are children of the HID symbol in newer kernels (6.18)
+    Menu: HID bus support
         [HID]
             Menu: Special HID drivers
-        Menu: I2C HID support
-        Menu: Intel ISH HID support
+            Menu: HID-BPF support
+            Menu: I2C HID support
+            Menu: Intel ISH HID support
+            Menu: AMD SFH HID Support
+            Menu: Surface System Aggregator Module HID support
+            Menu: Intel THC HID Support
+        Menu: USB HID support
     Menu: Sony MemoryStick card support
     [LEDS_GPIO_REGISTER]
     Menu: LED Support
@@ -145,11 +152,14 @@ Menu: Device Drivers
     Menu: DMA Engine support
     Menu: DMABUF options
     [DCA]
-    Menu: Auxiliary Display support
-    [PANEL CHARLCD]
+    # XXX: 'Menu: Graphics support' is now a parent menu holding several
+    # sub-menus that were previously direct children of Device Drivers
+    Menu: Graphics support
+        Menu: Auxiliary Display support
+            [PANEL CHARLCD]
     Menu: Userspace I/O drivers
     [IRQ_BYPASS_MANAGER]
-    Menu: TI VLYNQ
+    # Menu: TI VLYNQ  # removed from kernel
     Menu: Staging drivers
     Menu: X86 Platform Specific Device Drivers
     [PMC_ATOM]
@@ -173,7 +183,7 @@ Menu: Device Drivers
     Menu: Memory Controller drivers
     Menu: Industrial I/O support
     Menu: Non-Transparent Bridge support
-    Menu: VME bridge support
+    # Menu: VME bridge support  # moved under Staging drivers in newer kernels
     Menu: Pulse-Width Modulation (PWM) Support
     Menu: IRQ chip support
     Menu: IndustryPack bus support

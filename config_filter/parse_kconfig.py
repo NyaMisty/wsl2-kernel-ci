@@ -119,7 +119,11 @@ def getBlacklistSymbols(nodes, blackDict):
             if name in nodeNamesMap:
                 curBlackNodes.append(nodeNamesMap[name])
             else:
-                print("Symbol %s in blacklist, but not found" % name)
+                # Kernel Kconfig evolves: symbols & menus get renamed/removed
+                # across versions (e.g. 'Menu: HID support' -> 'Menu: HID bus
+                # support' in 6.18). Only warn instead of failing, so that the
+                # blacklist file can lag behind the kernel a bit.
+                eprint("Symbol %s in blacklist, but not found" % name)
         if k.startswith('Menu: '):
             # filter whole node
             doFilter(k)
@@ -128,13 +132,19 @@ def getBlacklistSymbols(nodes, blackDict):
             for c in nodenames:
                 # filter each blacklist name
                 doFilter(c)
-        
+
         if not blackDict[k]:
             ret += list(filter(lambda x: x, map(getNodeSym, curBlackNodes)))
             if len(curBlackNodes) == 1:
                 ret += getAllChildSymbol(curBlackNodes[0])
         else:
-            assert len(curBlackNodes) == 1
+            # The blacklist entry has children, but the corresponding menu was
+            # not found in this kernel (renamed or removed upstream). Skip the
+            # whole subtree instead of crashing.
+            if len(curBlackNodes) != 1:
+                eprint("Menu %s (with sub-entries) not found in this kernel, "
+                       "skipping its subtree" % k)
+                continue
             ret += getBlacklistSymbols(nodes[curBlackNodes[0]], blackDict[k])
     return ret
 
