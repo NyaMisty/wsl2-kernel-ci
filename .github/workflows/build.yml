@@ -6,10 +6,6 @@ on:
       - master
   workflow_dispatch:
     inputs:
-      debug_enabled:
-        description: 'Run the build with tmate debugging enabled (https://github.com/marketplace/actions/debugging-with-tmate)'
-        required: false
-        default: false
       build_mode:
         description: 'latest = only newest upstream tag; all_major = one build per kernel major (X.Y), e.g. 5.10/5.15/6.1/6.6/6.18'
         required: false
@@ -267,20 +263,6 @@ jobs:
 
       ##########################################################
       ###
-      ### XXX: Pre-build steps here (checking, debugging)
-      ###
-      ##########################################################
-
-      # Enable tmate debugging of manually-triggered workflows if the input option was provided
-      - name: Setup tmate session
-        uses: mxschmitt/action-tmate@v3
-        if: ${{ always() && ( (github.event_name == 'workflow_dispatch' && github.event.inputs.debug_enabled) || failure() ) }}
-        env:
-          SECRETS_CONTEXT: ${{ toJson(secrets) }}
-        timeout-minutes: ${{ github.event_name == 'schedule' && 40 || 360 }}
-
-      ##########################################################
-      ###
       ### XXX: Main building steps here
       ###
       ##########################################################
@@ -342,14 +324,6 @@ jobs:
           mv *.deb "bzImage-${{ matrix.target.tag }}" /tmp/build_output/ 2>/dev/null || mv ../*.deb /tmp/build_output/ 2>/dev/null || true
           mv /tmp/build_output/../../*.deb /tmp/build_output/ 2>/dev/null || true
           ls -la /tmp/build_output/
-
-      # Enable tmate debugging of manually-triggered workflows if the input option was provided
-      - name: Setup tmate session
-        uses: mxschmitt/action-tmate@v3
-        if: ${{ always() && ( (github.event_name == 'workflow_dispatch' && github.event.inputs.debug_enabled) || failure() ) }}
-        env:
-          SECRETS_CONTEXT: ${{ toJson(secrets) }}
-        timeout-minutes: ${{ github.event_name == 'schedule' && 40 || 360 }}
 
       ##########################################################
       ###
