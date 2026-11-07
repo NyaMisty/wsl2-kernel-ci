@@ -29,8 +29,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       # For latest mode: single tag. For all_major mode: json array [{tag, major}, ...]
-      build_targets: ${{ steps.select.outputs.build_targets }}
-      build_mode: ${{ steps.select.outputs.build_mode }}
+      build_targets: ${{ steps.gettags.outputs.build_targets }}
+      build_mode: ${{ steps.gettags.outputs.build_mode }}
     steps:
       - name: Sync microsoft/WSL2-Linux-Kernel Release Tags
         id: gettags
