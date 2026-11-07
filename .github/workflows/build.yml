@@ -275,9 +275,11 @@ jobs:
           # scripts/package/mkdebian so the Package: fields use a lowercased
           # version (KDEB_PKGNAMEVER), while file contents inside the
           # packages keep the real mixed-case KERNELRELEASE.
-          sed -i 's/^Package: \$packagename-\${KERNELRELEASE}/Package: \$packagename-\${KDEB_PKGNAMEVER}/' scripts/package/mkdebian
-          sed -i 's/^Package: linux-image-\${KERNELRELEASE}-dbg/Package: linux-image-\${KDEB_PKGNAMEVER}-dbg/' scripts/package/mkdebian
-          sed -i 's/^Package: linux-headers-\${KERNELRELEASE}/Package: linux-headers-\${KDEB_PKGNAMEVER}/' scripts/package/mkdebian
+          # Note: 6.6 uses '$version' in the Package: lines; 6.18+ switched
+          # to '${KERNELRELEASE}' — match both forms.
+          sed -i -E 's/^Package: \$packagename-(\$\{?KERNELRELEASE\}?|\$version)/Package: \$packagename-\${KDEB_PKGNAMEVER}/' scripts/package/mkdebian
+          sed -i -E 's/^Package: linux-image-(\$\{?KERNELRELEASE\}?|\$version)-dbg/Package: linux-image-\${KDEB_PKGNAMEVER}-dbg/' scripts/package/mkdebian
+          sed -i -E 's/^Package: linux-headers-(\$\{?KERNELRELEASE\}?|\$version)/Package: linux-headers-\${KDEB_PKGNAMEVER}/' scripts/package/mkdebian
 
           KREL=$(make kernelrelease)
           KVER=$(make kernelversion)
