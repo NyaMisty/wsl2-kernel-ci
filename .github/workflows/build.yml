@@ -98,9 +98,6 @@ jobs:
           echo "Timestamp: ${TIMESTAMP}"
           echo "value=${TIMESTAMP}" >> "$GITHUB_OUTPUT"
 
-      ### XXX: Keep alive cron-type workflows
-      - uses: gautamkrishnar/keepalive-workflow@v2
-
       ##########################################################
       ###
       ### XXX: Env-setup steps here
